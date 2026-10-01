@@ -1,0 +1,58 @@
+# VALORANT チーム振り分けBot
+
+Python 3.11以上 + discord.py。ローカルPCで起動し、Discordの募集ボタンから10人を集めて5対5に分けます。
+
+## 初回セットアップ（Windows / PowerShell）
+
+このフォルダーで以下を実行します。
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+1. https://discord.com/developers/applications でアプリを作成し、Botページでトークンを取得します。トークンは他人に送らないでください。
+2. OAuth2のURL Generatorで `bot` と `applications.commands` を選びます。
+3. Bot権限は「View Channels」「Send Messages」「Embed Links」を選び、生成したURLから自分のサーバーに追加します。最初は通常のテキストチャンネルを使ってください。
+4. Discordの設定 → 詳細設定 → 開発者モードを有効にして、サーバーを右クリックし「サーバーIDをコピー」します。
+5. 下記の値を設定し、起動します。Message Content Intentなどの特権Intentは不要です。
+
+```powershell
+$env:DISCORD_TOKEN = 'ここにBotトークン'
+$env:DISCORD_GUILD_ID = 'ここにサーバーID'
+.\.venv\Scripts\python.exe bot.py
+```
+
+トークンはコードやGitに保存しないでください。上の環境変数は現在のPowerShellセッション用です。終了は Ctrl+C。起動中はPCをスリープさせないでください。
+
+`DISCORD_GUILD_ID` を指定するとそのサーバーにコマンドを登録します。省略するとグローバル登録になり、反映に時間がかかる場合があります。デモでは指定を推奨します。
+
+## 使い方
+
+1. `/match create` で募集。
+2. 各人がランクを選び「参加」。登録済みなら「参加」だけでOK。
+3. `/profile` で登録ランクを確認。
+4. 10人そろったら主催者が「チーム分け」。結果が募集メッセージに表示されます。
+5. 次の試合は再び `/match create`。取り消す場合は主催者が「募集終了」。
+
+ランクはアイアン〜レディアントの9段階、自己申告です。各ランクを1〜9点として合計点差が最小の組み合わせを採用し、同点候補からランダムに選びます。実際の実力差を保証するものではありません。
+
+## 保存と制限
+
+- プロフィールは `data/profiles.json` に保存。Discord IDとランクのみを保存し、再起動後も残ります。
+- 募集はメモリに保持。1チャンネル1募集、10人まで。同じユーザーの重複参加は不可。
+- ランク変更はプロフィールと、操作した募集内の参加ランクに反映。他のチャンネルですでに参加している募集には遡って反映しません。
+- 再起動すると募集は失われ、古いボタンは動作しません。新しく `/match create` してください。
+- 1つのBotプロセスで使ってください。JSON保存は複数プロセスでの共有には対応しません。
+- 募集メッセージを手動削除した場合は、Botを再起動して募集状態をリセットしてください。
+- ランク自動取得、VC連携、ゲーム内操作、試合履歴保存は対象外です。
+- 依頼により、テスト・Bot起動・Discordへの接続確認は実行していません。
+
+## 担当の分け方
+
+- `match_ui.py`: コマンド、ボタン、選択メニュー、表示
+- `match_service.py`: 募集と参加者の管理
+- `balancer.py`: チーム分け計算
+- `profile_store.py`: JSON保存
+- `models.py`: 共通データ定義
+- `bot.py`: 起動とコマンド登録
