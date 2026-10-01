@@ -8,12 +8,18 @@ from balancer import balance
 from models import RANKS
 
 
+def player_name(user_id):
+    return f'Demo {-user_id}' if user_id < 0 else f'<@{user_id}>'
+
+
 def recruitment(match):
-    embed = discord.Embed(title='VALORANT カスタム募集', color=0xFA4454)
+    embed = discord.Embed(title='VALORANT カスタム募集' + ('【デモ】' if match.demo else ''), color=0xFA4454)
     embed.description = f'主催：<@{match.owner_id}>\n参加者：{len(match.participants)} / 10'
-    entries = [f'{index}. <@{user}> — {RANKS[rank - 1]}' for index, (user, rank) in enumerate(match.participants.items(), 1)]
+    entries = [f'{index}. {player_name(user)} — {RANKS[rank - 1]}' for index, (user, rank) in enumerate(match.participants.items(), 1)]
     embed.add_field(name='参加者', value='\n'.join(entries) or '参加者を募集中です。', inline=False)
     embed.set_footer(text='初めての方はランクを選択してから参加してください。再起動後は新しく募集してください。')
+    if match.demo:
+        embed.set_footer(text='自分＋架空の9人。すぐにチーム分けできます。ランク変更はこのデモ内だけに反映され、保存されません。')
     return embed
 
 
@@ -22,6 +28,9 @@ class MatchView(discord.ui.View):
         super().__init__(timeout=None)
         self.match, self.service, self.profiles = match, service, profiles
         self.lock = asyncio.Lock()
+        if match.demo:
+            self.join.disabled = True
+            self.leave.disabled = True
 
     async def operate(self, interaction, action, rank=None):
         await interaction.response.defer(ephemeral=True)
@@ -31,13 +40,20 @@ class MatchView(discord.ui.View):
                 user_id = interaction.user.id
                 if match.closed:
                     raise ValueError('この募集は終了しています。新しく募集してください。')
+                if match.demo and user_id != match.owner_id:
+                    raise ValueError('デモは作成者のみ操作できます。')
+                if match.demo and action in ('join', 'leave'):
+                    raise ValueError('デモの参加者は固定です。')
                 if action in ('split', 'close') and user_id != match.owner_id:
                     raise ValueError('この操作は主催者のみ実行できます。')
                 if action == 'rank':
-                    self.profiles.set(user_id, rank)
+                    if not match.demo:
+                        self.profiles.set(user_id, rank)
                     if user_id in match.participants:
                         match.participants[user_id] = rank
                     notice = f'{RANKS[rank - 1]}を登録しました。未参加なら「参加」を押してください。'
+                    if match.demo:
+                        notice = f'デモ内のランクを{RANKS[rank - 1]}に変更しました。プロフィールには保存していません。'
                 elif action == 'join':
                     registered = self.profiles.get(user_id)
                     if registered is None:
@@ -49,13 +65,15 @@ class MatchView(discord.ui.View):
                     notice = '辞退しました。'
                 elif action == 'split':
                     first, second = balance(match.participants)
-                    result = discord.Embed(title='チーム分け結果', color=0xFA4454)
+                    result = discord.Embed(title='チーム分け結果' + ('【デモ】' if match.demo else ''), color=0xFA4454)
                     scores = []
                     for label, team in (('α', first), ('β', second)):
                         score = sum(match.participants[user] for user in team)
                         scores.append(score)
-                        result.add_field(name=f'チーム{label}：合計{score}', value='\n'.join(f'<@{user}> — {RANKS[match.participants[user] - 1]}' for user in team), inline=False)
+                        result.add_field(name=f'チーム{label}：合計{score}', value='\n'.join(f'{player_name(user)} — {RANKS[match.participants[user] - 1]}' for user in team), inline=False)
                     result.set_footer(text=f'ランク点の差：{abs(scores[0] - scores[1])} ｜ 自己申告ランクによる目安です。次の試合は /match create')
+                    if match.demo:
+                        result.set_footer(text=f'ランク点の差：{abs(scores[0] - scores[1])} ｜ 架空プレイヤーを含むデモです。再実行は /match demo')
                     # Publish successfully before closing the session.
                     await interaction.message.edit(embed=result, view=None)
                     self.service.close(match)
@@ -103,11 +121,23 @@ def register_commands(tree, service, profiles):
 
     @group.command(name='create', description='10人のカスタム参加募集を開始します')
     async def create(interaction: discord.Interaction):
+        await start_match(interaction)
+
+    @group.command(name='demo', description='自分と架空の9人でチーム分けを体験します（保存なし）')
+    async def demo(interaction: discord.Interaction):
+        await start_match(interaction, demo=True)
+
+    async def start_match(interaction: discord.Interaction, demo=False):
         try:
             match = service.create(interaction.channel_id, interaction.user.id)
         except ValueError as error:
             await interaction.response.send_message(str(error), ephemeral=True)
             return
+        if demo:
+            match.demo = True
+            match.participants[interaction.user.id] = profiles.get(interaction.user.id) or 4
+            # Negative IDs are local dummy identifiers, never Discord accounts.
+            match.participants.update({-index: index for index in range(1, 10)})
         view = MatchView(match, service, profiles)
         try:
             await interaction.response.send_message(embed=recruitment(match), view=view)
