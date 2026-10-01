@@ -1,6 +1,7 @@
 # VALORANT チーム振り分けBot
 
-Python 3.11以上 + discord.py。ローカルPCで起動し、Discordの募集ボタンから10人を集めて5対5に分けます。
+動作確認環境はPython 3.11以上 + discord.py
+ローカルPCで起動し、Discordの募集ボタンから10人を集めて5対5に分けます
 
 ## 初回セットアップ（Windows / PowerShell）
 
