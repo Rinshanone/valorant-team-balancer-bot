@@ -67,7 +67,7 @@ class MatchView(discord.ui.View):
                     first, second = balance(match.participants)
                     result = discord.Embed(title='チーム分け結果' + ('【デモ】' if match.demo else ''), color=0xFA4454)
                     scores = []
-                    for label, team in (('α', first), ('β', second)):
+                    for label, team in (('アルファ', first), ('オメガ', second)):
                         score = sum(match.participants[user] for user in team)
                         scores.append(score)
                         result.add_field(name=f'チーム{label}：合計{score}', value='\n'.join(f'{player_name(user)} — {RANKS[match.participants[user] - 1]}' for user in team), inline=False)
